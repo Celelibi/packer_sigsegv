@@ -16,7 +16,14 @@
 
 
 
-#define _unused __attribute__((unused))
+#ifdef __has_attribute
+#	if __has_attribute(unused)
+#		define _unused __attribute__((unused))
+#	else
+#		define _unused
+#	endif
+#endif
+
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof(*(a)))
 
 
