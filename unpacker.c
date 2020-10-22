@@ -22,6 +22,11 @@
 #	else
 #		define _unused
 #	endif
+#	if __has_attribute(format)
+#		define _printf_check __attribute__((format(printf, 1, 2)))
+#	else
+#		define _printf_check
+#	endif
 #endif
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof(*(a)))
@@ -72,6 +77,7 @@ static struct sigaction oldsa;
 
 
 
+_printf_check
 static void syserr(const char *fmt, ...) {
 	va_list args;
 
@@ -85,6 +91,7 @@ static void syserr(const char *fmt, ...) {
 
 
 
+_printf_check
 static void usererr(const char *fmt, ...) {
 	va_list args;
 
