@@ -315,7 +315,7 @@ static struct process_mapping load_elf(const Elf64_Ehdr *elf, const char *filepa
 
 	map.prog.segments = calloc(map.prog.nsegments, sizeof(*map.prog.segments));
 	if (map.prog.segments == NULL)
-		syserr("calloc(%d segments)", map.prog.nsegments);
+		syserr("calloc(%ld segments)", map.prog.nsegments);
 
 	/* Load all the segments */
 	map.prog.base = find_load_address(elf);
