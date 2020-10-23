@@ -1,4 +1,4 @@
-SRCS=unpacker.c
+SRCS=loader.c
 OBJS=$(patsubst %.c,%.o,$(SRCS))
 BIN=$(patsubst %.c,%,$(SRCS))
 
