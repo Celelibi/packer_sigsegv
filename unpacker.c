@@ -23,14 +23,17 @@
 #		define _unused
 #	endif
 #	if __has_attribute(format)
-#		define _printf_check __attribute__((format(printf, 1, 2)))
+#		define _printf_check(i) __attribute__((format(printf, i, i+1)))
 #	else
 #		define _printf_check
 #	endif
 #endif
 
-#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(*(a)))
+#ifndef VERBOSE
+#	define VERBOSE 1
+#endif
 
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(*(a)))
 
 static size_t PAGE_SIZE = 0;
 
@@ -77,7 +80,22 @@ static struct sigaction oldsa;
 
 
 
-_printf_check
+_printf_check(2)
+static int debugprintf(unsigned int level, const char *fmt, ...) {
+	int ret;
+	va_list ap;
+
+	if (level > VERBOSE)
+		return 0;
+
+	va_start(ap, fmt);
+	ret = vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	return ret;
+}
+
+
+_printf_check(1)
 static void syserr(const char *fmt, ...) {
 	va_list args;
 
@@ -91,7 +109,7 @@ static void syserr(const char *fmt, ...) {
 
 
 
-_printf_check
+_printf_check(1)
 static void usererr(const char *fmt, ...) {
 	va_list args;
 
@@ -440,25 +458,25 @@ static struct segment_map *segment_lookup(const struct process_mapping *map, con
 static void dump_map(const struct process_mapping *map) {
 	size_t i;
 
-	fprintf(stderr, "Prog base: 0x%08lx\n", (intptr_t)map->prog.base);
+	debugprintf(1, "Prog base: 0x%08lx\n", (intptr_t)map->prog.base);
 	for (i = 0; i < map->prog.nsegments; i++) {
 		const struct segment_map *seg = &map->prog.segments[i];
 		const void *start = seg->base;
 		const void *end = (void *)((intptr_t)seg->base + seg->size);
 
-		fprintf(stderr, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
+		debugprintf(1, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
 	}
-	fprintf(stderr, "\n");
+	debugprintf(1, "\n");
 
-	fprintf(stderr, "Interp base: 0x%08lx\n", (intptr_t)map->interp.base);
+	debugprintf(1, "Interp base: 0x%08lx\n", (intptr_t)map->interp.base);
 	for (i = 0; i < map->interp.nsegments; i++) {
 		const struct segment_map *seg = &map->interp.segments[i];
 		const void *start = seg->base;
 		const void *end = (void *)((intptr_t)seg->base + seg->size);
 
-		fprintf(stderr, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
+		debugprintf(1, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
 	}
-	fprintf(stderr, "\n");
+	debugprintf(1, "\n");
 }
 
 
@@ -473,8 +491,8 @@ static void forward_sigsegv(siginfo_t *si, void *uctxt) {
 		return;
 	}
 
-	fprintf(stderr, "Oops, not my segment\n");
-	fprintf(stderr, "Error at: 0x%08lx\n", (intptr_t)si->si_addr);
+	debugprintf(1, "Oops, not my segment\n");
+	debugprintf(1, "Error at: 0x%08lx\n", (intptr_t)si->si_addr);
 	dump_map(&current_map);
 	print_maps();
 
@@ -511,13 +529,13 @@ static void sigsegv(_unused int signal, siginfo_t *si, _unused void *uctxt) {
 
 	pp = segfault->plain_pages;
 	if (pp[0] != NULL) {
-		/*fprintf(stderr, "Removing access to page 0x%08lx\n", (intptr_t)pp[0]);*/
+		debugprintf(2, "Removing access to page 0x%08lx\n", (intptr_t)pp[0]);
 		lock_page(pp[0]);
 	}
 
 	addr = (void *)((intptr_t)si->si_addr & ~(PAGE_SIZE - 1));
 
-	/*fprintf(stderr, "Enabling access %d to page 0x%08lx for fault at 0x%08lx\n", segfault->prot, (intptr_t)addr, (intptr_t)si->si_addr);*/
+	debugprintf(2, "Enabling access %d to page 0x%08lx for fault at 0x%08lx\n", segfault->prot, (intptr_t)addr, (intptr_t)si->si_addr);
 	unlock_page(addr, segfault->prot);
 
 	memmove(pp, pp + 1, sizeof(segfault->plain_pages) - sizeof(*pp));
