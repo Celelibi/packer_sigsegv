@@ -1,9 +1,10 @@
-SRCS=loader.c
+SRCS=loader.c runtime.c
+HDRS=runtime.h
 OBJS=$(patsubst %.c,%.o,$(SRCS))
-BIN=$(patsubst %.c,%,$(SRCS))
+BIN=loader
 
 
-CFLAGS=-Wall -Wextra -ansi -pedantic -ggdb3
+CFLAGS=-Wall -Wextra -ansi -pedantic -DVERBOSE=1 -ggdb3
 LDFLAGS=
 
 .PHONY: all
@@ -12,7 +13,7 @@ all: $(BIN)
 $(BIN): $(OBJS) Makefile
 	gcc -o $@ $(OBJS) $(LDFLAGS)
 
-%.o: %.c Makefile
+%.o: %.c $(HDRS) Makefile
 	gcc -o $@ -c $< $(CFLAGS)
 
 
