@@ -23,11 +23,6 @@
 #	else
 #		define _unused
 #	endif
-#	if __has_attribute(format)
-#		define _printf_check(i) __attribute__((format(printf, i, i+1)))
-#	else
-#		define _printf_check
-#	endif
 #endif
 
 #ifndef VERBOSE
@@ -61,8 +56,7 @@ static int debugprintf(unsigned int level, const char *fmt, ...) {
 
 
 
-_printf_check(1)
-static void syserr(const char *fmt, ...) {
+void syserr(const char *fmt, ...) {
 	va_list args;
 
 	va_start(args, fmt);
@@ -75,8 +69,7 @@ static void syserr(const char *fmt, ...) {
 
 
 
-_printf_check(1)
-static void usererr(const char *fmt, ...) {
+void usererr(const char *fmt, ...) {
 	va_list args;
 
 	va_start(args, fmt);

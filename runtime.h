@@ -5,6 +5,18 @@
 #include <stdint.h>
 #include <elf.h>
 
+
+
+#ifdef __has_attribute
+#	if __has_attribute(format)
+#		define _printf_check(i) __attribute__((format(printf, i, i+1)))
+#	else
+#		define _printf_check
+#	endif
+#endif
+
+
+
 struct segment_map {
 	void *base;
 	size_t size;
@@ -38,6 +50,12 @@ struct process_mapping {
 	void *entrypoint;
 };
 
+
+_printf_check(1)
+void syserr(const char *fmt, ...);
+
+_printf_check(1)
+void usererr(const char *fmt, ...);
 
 void init(void);
 struct process_mapping load_elf_path(const char *path);
