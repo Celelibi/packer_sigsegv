@@ -8,8 +8,12 @@ ELFPADDER_SRCS=elfpadder.c runtime.c
 ELFPADDER_OBJS=$(patsubst %.c,%.o,$(ELFPADDER_SRCS))
 ELFPADDER_BIN=elfpadder
 
-OBJS=$(LOADER_OBJS) $(ELFPADDER_OBJS)
-BINS=$(LOADER_BIN) $(ELFPADDER_BIN)
+ENCRYPTER_SRCS=encrypter.c runtime.c
+ENCRYPTER_OBJS=$(patsubst %.c,%.o,$(ENCRYPTER_SRCS))
+ENCRYPTER_BIN=encrypter
+
+OBJS=$(LOADER_OBJS) $(ELFPADDER_OBJS) $(ENCRYPTER_OBJS)
+BINS=$(LOADER_BIN) $(ELFPADDER_BIN) $(ENCRYPTER_BIN)
 
 
 CFLAGS=-Wall -Wextra -ansi -pedantic -DVERBOSE=1 -ggdb3
@@ -23,6 +27,9 @@ $(LOADER_BIN): $(LOADER_OBJS) Makefile
 
 $(ELFPADDER_BIN): $(ELFPADDER_OBJS) Makefile
 	gcc -o $@ $(ELFPADDER_OBJS) $(LDFLAGS)
+
+$(ENCRYPTER_BIN): $(ENCRYPTER_OBJS) Makefile
+	gcc -o $@ $(ENCRYPTER_OBJS) $(LDFLAGS)
 
 %.o: %.c $(HDRS) Makefile
 	gcc -o $@ -c $< $(CFLAGS)
