@@ -31,7 +31,7 @@
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof(*(a)))
 
-static size_t PAGE_SIZE = 0;
+size_t PAGE_SIZE = 0;
 
 
 /* Variables used in the signal handler. */
@@ -81,7 +81,7 @@ void usererr(const char *fmt, ...) {
 
 
 
-static void cipher_page(void *addr) {
+void cipher_page(void *addr) {
 	unsigned long *ptr = addr;
 	size_t i;
 
@@ -91,7 +91,7 @@ static void cipher_page(void *addr) {
 
 
 
-static void decipher_page(void *addr) {
+void decipher_page(void *addr) {
 	/* This cipher_page reverse itself. */
 	cipher_page(addr);
 }
@@ -130,10 +130,8 @@ static void unlock_page(void *addr, int prot) {
 
 
 
-static void cipher_block(void *addr, size_t size) {
+void cipher_pages(void *addr, size_t size) {
 	void *endaddr = (void *)((intptr_t)addr + size);
-
-	addr = (void *)((intptr_t)addr & ~(PAGE_SIZE - 1));
 
 	while (addr < endaddr) {
 		cipher_page(addr);
@@ -267,7 +265,7 @@ static struct segment_map load_segment(const Elf64_Ehdr *elf, const Elf64_Phdr *
 	segsz = (segsz + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 	/* Cipher here because we load from a plain file instead of an ecrypted
 	 * one. */
-	cipher_block(addr, segsz);
+	cipher_pages(addr, segsz);
 
 	/* Remove all access */
 	err = mprotect(addr, segsz, PROT_NONE);
