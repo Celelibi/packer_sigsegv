@@ -141,6 +141,29 @@ void cipher_pages(void *addr, size_t size) {
 
 
 
+static void *allocate_decipher(const void *addr, size_t size) {
+	const void *addralign = (const void *)((intptr_t)addr & ~(PAGE_SIZE - 1));
+	size_t startoffset = (intptr_t)addr - (intptr_t)addralign;
+	size_t sizealign = (size + startoffset + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+	void *block;
+
+	block = malloc(sizealign);
+	if (block == NULL)
+		syserr("malloc(%lu)", sizealign);
+
+	memcpy(block, addralign, sizealign);
+	memmove(block, (void *)((intptr_t)block + startoffset), size);
+
+	/* We might have allocated almost 2 pages too much. */
+	block = realloc(block, size);
+	if (block == NULL)
+		syserr("realloc(block, %lu)", size);
+
+	return block;
+}
+
+
+
 static void print_maps(void) {
 	FILE *fp;
 	char buf[1024];
@@ -191,13 +214,11 @@ static void check_elf(const Elf64_Ehdr *elf, const char *filepath) {
 
 
 
-static void *find_load_address(const Elf64_Ehdr *elf) {
-	const Elf64_Phdr *phdr_table, *phdr;
+static void *find_load_address(const Elf64_Ehdr *elf, const Elf64_Phdr *phdr_table) {
+	const Elf64_Phdr *phdr;
 	Elf64_Addr minaddr = -1, maxaddr = 0;
 	size_t size;
 	void *ptr;
-
-	phdr_table = (void *)((intptr_t)elf + elf->e_phoff);
 
 	for (phdr = phdr_table; phdr < &phdr_table[elf->e_phnum]; phdr++) {
 		if (phdr->p_type != PT_LOAD)
@@ -220,7 +241,7 @@ static void *find_load_address(const Elf64_Ehdr *elf) {
 
 
 
-static struct segment_map load_segment(const Elf64_Ehdr *elf, const Elf64_Phdr *phdr, void *base) {
+static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr, void *base) {
 	void *reqaddr = NULL;
 	void *addr;
 	size_t bias = 0;
@@ -258,7 +279,7 @@ static struct segment_map load_segment(const Elf64_Ehdr *elf, const Elf64_Phdr *
 		syserr("mmap returned an unexpected address");
 
 	dst = (void *)((intptr_t)addr + bias);
-	src = (void *)((intptr_t)elf + phdr->p_offset);
+	src = (void *)((intptr_t)ptr + phdr->p_offset);
 	memcpy(dst, src, phdr->p_filesz);
 
 	segsz = phdr->p_memsz + bias;
@@ -279,18 +300,25 @@ static struct segment_map load_segment(const Elf64_Ehdr *elf, const Elf64_Phdr *
 }
 
 
-static struct process_mapping load_elf(const Elf64_Ehdr *elf, const char *filepath) {
-	const Elf64_Phdr *phdr_table, *phdr;
+struct process_mapping load_elf(const void *ptr, const char *filepath) {
+	const Elf64_Ehdr *elf;
+	const Elf64_Phdr *phdr_table;
+	size_t phdr_table_size;
+	const Elf64_Phdr *phdr;
 	const char *interppath = NULL;
 	struct process_mapping map;
 	struct segment_map seg;
 	size_t segno = 0;
 
+	elf = allocate_decipher(ptr, sizeof(*elf));
+
 	check_elf(elf, filepath);
 	memset(&map, 0, sizeof(map));
 	map.prog.ehdr = *elf;
 
-	phdr_table = (void *)((intptr_t)elf + elf->e_phoff);
+	phdr_table_size = elf->e_phentsize * elf->e_phnum;
+	phdr_table = (void *)((intptr_t)ptr + elf->e_phoff);
+	phdr_table = allocate_decipher(phdr_table, phdr_table_size);
 
 	/* Count the number of PT_LOAD program headers in order to allocate the
 	 * segments array. */
@@ -304,12 +332,12 @@ static struct process_mapping load_elf(const Elf64_Ehdr *elf, const char *filepa
 		syserr("calloc(%ld segments)", map.prog.nsegments);
 
 	/* Load all the segments */
-	map.prog.base = find_load_address(elf);
+	map.prog.base = find_load_address(elf, phdr_table);
 	for (phdr = phdr_table; phdr < &phdr_table[elf->e_phnum]; phdr++) {
 		if (phdr->p_type != PT_LOAD)
 			continue;
 
-		seg = load_segment(elf, phdr, map.prog.base);
+		seg = load_segment(ptr, phdr, map.prog.base);
 		if (map.prog.base == NULL)
 			map.prog.base = seg.base;
 
@@ -323,7 +351,7 @@ static struct process_mapping load_elf(const Elf64_Ehdr *elf, const char *filepa
 		if (phdr->p_type != PT_INTERP)
 			continue;
 
-		interppath = (void *)((intptr_t)elf + phdr->p_offset);
+		interppath = allocate_decipher((void *)((intptr_t)ptr + phdr->p_offset), phdr->p_filesz);
 	}
 
 	if (interppath != NULL) {
@@ -331,9 +359,13 @@ static struct process_mapping load_elf(const Elf64_Ehdr *elf, const char *filepa
 		map.interp = load_elf_path(interppath).prog;
 		map.has_interp = 1;
 		map.entrypoint = map.interp.entrypoint;
+		free((void *)interppath);
 	} else {
 		map.entrypoint = map.prog.entrypoint;
 	}
+
+	free((void *)phdr_table);
+	free((void *)elf);
 
 	return map;
 }
