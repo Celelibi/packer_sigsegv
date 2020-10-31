@@ -141,6 +141,17 @@ void cipher_pages(void *addr, size_t size) {
 
 
 
+static void decipher_pages(void *addr, size_t size) {
+	void *endaddr = (void *)((intptr_t)addr + size);
+
+	while (addr < endaddr) {
+		decipher_page(addr);
+		addr = (void *)((intptr_t)addr + PAGE_SIZE);
+	}
+}
+
+
+
 static void *allocate_decipher(const void *addr, size_t size) {
 	const void *addralign = (const void *)((intptr_t)addr & ~(PAGE_SIZE - 1));
 	size_t startoffset = (intptr_t)addr - (intptr_t)addralign;
@@ -152,6 +163,7 @@ static void *allocate_decipher(const void *addr, size_t size) {
 		syserr("malloc(%lu)", sizealign);
 
 	memcpy(block, addralign, sizealign);
+	decipher_pages(block, sizealign);
 	memmove(block, (void *)((intptr_t)block + startoffset), size);
 
 	/* We might have allocated almost 2 pages too much. */
@@ -241,7 +253,8 @@ static void *find_load_address(const Elf64_Ehdr *elf, const Elf64_Phdr *phdr_tab
 
 
 
-static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr, void *base) {
+static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
+		void *base, int preciphered) {
 	void *reqaddr = NULL;
 	void *addr;
 	size_t bias = 0;
@@ -284,9 +297,9 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr, 
 
 	segsz = phdr->p_memsz + bias;
 	segsz = (segsz + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-	/* Cipher here because we load from a plain file instead of an ecrypted
-	 * one. */
-	cipher_pages(addr, segsz);
+
+	if (!preciphered)
+		cipher_pages(addr, segsz);
 
 	/* Remove all access */
 	err = mprotect(addr, segsz, PROT_NONE);
@@ -300,7 +313,7 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr, 
 }
 
 
-struct process_mapping load_elf(const void *ptr, const char *filepath) {
+struct process_mapping load_elf(const void *ptr, int preciphered, const char *filepath) {
 	const Elf64_Ehdr *elf;
 	const Elf64_Phdr *phdr_table;
 	size_t phdr_table_size;
@@ -310,15 +323,20 @@ struct process_mapping load_elf(const void *ptr, const char *filepath) {
 	struct segment_map seg;
 	size_t segno = 0;
 
-	elf = allocate_decipher(ptr, sizeof(*elf));
+	if (preciphered)
+		elf = allocate_decipher(ptr, sizeof(*elf));
+	else
+		elf = ptr;
 
 	check_elf(elf, filepath);
 	memset(&map, 0, sizeof(map));
 	map.prog.ehdr = *elf;
 
-	phdr_table_size = elf->e_phentsize * elf->e_phnum;
 	phdr_table = (void *)((intptr_t)ptr + elf->e_phoff);
-	phdr_table = allocate_decipher(phdr_table, phdr_table_size);
+	if (preciphered) {
+		phdr_table_size = elf->e_phentsize * elf->e_phnum;
+		phdr_table = allocate_decipher(phdr_table, phdr_table_size);
+	}
 
 	/* Count the number of PT_LOAD program headers in order to allocate the
 	 * segments array. */
@@ -337,7 +355,7 @@ struct process_mapping load_elf(const void *ptr, const char *filepath) {
 		if (phdr->p_type != PT_LOAD)
 			continue;
 
-		seg = load_segment(ptr, phdr, map.prog.base);
+		seg = load_segment(ptr, phdr, map.prog.base, preciphered);
 		if (map.prog.base == NULL)
 			map.prog.base = seg.base;
 
@@ -351,7 +369,9 @@ struct process_mapping load_elf(const void *ptr, const char *filepath) {
 		if (phdr->p_type != PT_INTERP)
 			continue;
 
-		interppath = allocate_decipher((void *)((intptr_t)ptr + phdr->p_offset), phdr->p_filesz);
+		interppath = (const void *)((intptr_t)ptr + phdr->p_offset);
+		if (preciphered)
+			interppath = allocate_decipher(interppath, phdr->p_filesz);
 	}
 
 	if (interppath != NULL) {
@@ -359,13 +379,16 @@ struct process_mapping load_elf(const void *ptr, const char *filepath) {
 		map.interp = load_elf_path(interppath).prog;
 		map.has_interp = 1;
 		map.entrypoint = map.interp.entrypoint;
-		free((void *)interppath);
+		if (preciphered)
+			free((void *)interppath);
 	} else {
 		map.entrypoint = map.prog.entrypoint;
 	}
 
-	free((void *)phdr_table);
-	free((void *)elf);
+	if (preciphered) {
+		free((void *)phdr_table);
+		free((void *)elf);
+	}
 
 	return map;
 }
@@ -395,7 +418,7 @@ struct process_mapping load_elf_path(const char *path) {
 	if (err == -1)
 		syserr("close(\"%s\")", path);
 
-	map = load_elf(ptr, path);
+	map = load_elf(ptr, 0, path);
 
 	err = munmap(ptr, st.st_size);
 	if (err == -1)
