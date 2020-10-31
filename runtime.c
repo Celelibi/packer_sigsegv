@@ -200,7 +200,7 @@ static void print_maps(void) {
 
 
 
-static void check_elf(const Elf64_Ehdr *elf, const char *filepath) {
+void check_elf(const Elf64_Ehdr *elf, const char *filepath) {
 	const unsigned char magic[] = {ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3};
 
 	if (memcmp(&elf->e_ident[EI_MAG0], magic, sizeof(magic)))

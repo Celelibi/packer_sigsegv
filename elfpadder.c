@@ -164,6 +164,7 @@ static int pad_elf_once(int fd, const char *path) {
 	if (elf == MAP_FAILED)
 		syserr("mmap(\"%s\")", path);
 
+	check_elf(elf, path);
 	padsize = pad_location_size(elf, &padoff);
 
 	err = munmap(elf, oldsize);

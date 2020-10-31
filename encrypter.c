@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
 	if (err == -1)
 		syserr("close(\"%s\")", path);
 
+	check_elf(elf, path);
 	encrypt_segments(elf);
 
 	err = munmap(elf, st.st_size);

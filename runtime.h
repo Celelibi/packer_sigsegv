@@ -62,6 +62,7 @@ _printf_check(1)
 void usererr(const char *fmt, ...);
 
 void init(void);
+void check_elf(const Elf64_Ehdr *elf, const char *filepath);
 void cipher_page(void *addr);
 void decipher_page(void *addr);
 void cipher_pages(void *addr, size_t size);
