@@ -12,7 +12,10 @@ ENCRYPTER_SRCS=encrypter.c runtime.c
 ENCRYPTER_OBJS=$(patsubst %.c,%.o,$(ENCRYPTER_SRCS))
 ENCRYPTER_BIN=encrypter
 
-OBJS=$(LOADER_OBJS) $(ELFPADDER_OBJS) $(ENCRYPTER_OBJS)
+RUNMAIN_SRCS=runmain.c runtime.c
+RUNMAIN_OBJS=$(patsubst %.c,%.o,$(RUNMAIN_SRCS))
+
+OBJS=$(LOADER_OBJS) $(ELFPADDER_OBJS) $(ENCRYPTER_OBJS) $(RUNMAIN_OBJS)
 BINS=$(LOADER_BIN) $(ELFPADDER_BIN) $(ENCRYPTER_BIN)
 
 
@@ -31,8 +34,26 @@ $(ELFPADDER_BIN): $(ELFPADDER_OBJS) Makefile
 $(ENCRYPTER_BIN): $(ENCRYPTER_OBJS) Makefile
 	gcc -o $@ $(ENCRYPTER_OBJS) $(LDFLAGS)
 
+# Remove implicit rule
+%: %.o
+
+.SECONDARY: $(RUNMAIN_OBJS)
+%.packed: $(RUNMAIN_OBJS) %.o Makefile
+	gcc -o $@ $(RUNMAIN_OBJS) $*.o $(LDFLAGS)
+
 %.o: %.c $(HDRS) Makefile
 	gcc -o $@ -c $< $(CFLAGS)
+
+%.o: %.enc Makefile
+	objcopy -I binary -O elf64-x86-64 --strip-all --add-symbol embedded_elf=.data:0 $< $@
+
+%.enc: %.pad $(ENCRYPTER_BIN) Makefile
+	cp $< $@
+	./$(ENCRYPTER_BIN) $@
+
+%.pad: % $(ELFPADDER_BIN) Makefile
+	cp $< $@
+	./$(ELFPADDER_BIN) $@
 
 
 .PHONY: clean

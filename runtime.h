@@ -65,6 +65,7 @@ void init(void);
 void cipher_page(void *addr);
 void decipher_page(void *addr);
 void cipher_pages(void *addr, size_t size);
+struct process_mapping load_elf(const void *ptr, int preciphered, const char *filepath);
 struct process_mapping load_elf_path(const char *path);
 void setup_sig_handler(const struct process_mapping *map);
 void start_process(const struct process_mapping *map, int argc, char **argv, char **envp);

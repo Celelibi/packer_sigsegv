@@ -2,3 +2,6 @@ loader
 elfpadder
 encrypter
 *.o
+*.enc
+*.pad
+*.packed
