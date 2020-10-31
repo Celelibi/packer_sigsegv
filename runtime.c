@@ -285,13 +285,14 @@ static void *find_load_address(const Elf64_Ehdr *elf, const Elf64_Phdr *phdr_tab
 
 static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
 		void *base, int preciphered) {
-	void *reqaddr = NULL;
+	void *reqaddr;
 	void *addr;
 	size_t bias = 0;
 	void *dst, *src;
 	int flags;
 	struct segment_map seg;
 	size_t segsz;
+	intptr_t reqaddrraw, reqaddralign;
 	int err;
 
 	assert(phdr->p_type == PT_LOAD);
@@ -302,23 +303,17 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
 	seg.prot |= (phdr->p_flags & PF_W) ? PROT_WRITE : 0;
 	seg.prot |= (phdr->p_flags & PF_X) ? PROT_EXEC : 0;
 
-	flags = MAP_PRIVATE | MAP_ANONYMOUS;
-
-	if (base != NULL) {
-		intptr_t reqaddrraw, reqaddralign;
-
-		flags |= MAP_FIXED_NOREPLACE;
-		reqaddrraw = (intptr_t)base + phdr->p_vaddr;
-		reqaddralign = reqaddrraw & ~(PAGE_SIZE - 1);
-		bias = reqaddrraw - reqaddralign;
-		reqaddr = (void *)reqaddralign;
-	}
+	flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE;
+	reqaddrraw = (intptr_t)base + phdr->p_vaddr;
+	reqaddralign = reqaddrraw & ~(PAGE_SIZE - 1);
+	bias = reqaddrraw - reqaddralign;
+	reqaddr = (void *)reqaddralign;
 
 	addr = mmap(reqaddr, phdr->p_memsz + bias, PROT_WRITE, flags, -1, 0);
 	if (addr == MAP_FAILED)
 		syserr("mmap");
 
-	if (base != NULL && addr != reqaddr)
+	if (addr != reqaddr)
 		syserr("mmap returned an unexpected address");
 
 	dst = offset_ptr(addr, bias);
