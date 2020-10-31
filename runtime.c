@@ -111,6 +111,12 @@ static void *round_down_page_ptr(const void *ptr) {
 
 
 
+static size_t page_offset_ptr(const void *ptr) {
+	return (intptr_t)ptr & (PAGE_SIZE - 1);
+}
+
+
+
 void cipher_page(void *addr) {
 	unsigned long *ptr = addr;
 	size_t i;
@@ -184,7 +190,7 @@ static void decipher_pages(void *addr, size_t size) {
 
 static void *allocate_decipher(const void *addr, size_t size) {
 	const void *addralign = round_down_page_ptr(addr);
-	size_t startoffset = (intptr_t)addr - (intptr_t)addralign;
+	size_t startoffset = page_offset_ptr(addr);
 	size_t sizealign = round_up_page(size + startoffset);
 	void *block;
 
