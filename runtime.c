@@ -81,6 +81,36 @@ void usererr(const char *fmt, ...) {
 
 
 
+static void *offset_ptr(const void *ptr, ptrdiff_t offset) {
+	return (void *)((intptr_t)ptr + offset);
+}
+
+
+
+static void *elf_offset_ptr(const Elf64_Ehdr *base, Elf64_Off offset) {
+	return offset_ptr(base, offset);
+}
+
+
+
+static size_t round_down_page(size_t val) {
+	return val & ~(PAGE_SIZE - 1);
+}
+
+
+
+static size_t round_up_page(size_t val) {
+	return round_down_page(val + PAGE_SIZE - 1);
+}
+
+
+
+static void *round_down_page_ptr(const void *ptr) {
+	return (void *)round_down_page((intptr_t)ptr);
+}
+
+
+
 void cipher_page(void *addr) {
 	unsigned long *ptr = addr;
 	size_t i;
@@ -131,31 +161,31 @@ static void unlock_page(void *addr, int prot) {
 
 
 void cipher_pages(void *addr, size_t size) {
-	void *endaddr = (void *)((intptr_t)addr + size);
+	void *endaddr = offset_ptr(addr, size);
 
 	while (addr < endaddr) {
 		cipher_page(addr);
-		addr = (void *)((intptr_t)addr + PAGE_SIZE);
+		addr = offset_ptr(addr, PAGE_SIZE);
 	}
 }
 
 
 
 static void decipher_pages(void *addr, size_t size) {
-	void *endaddr = (void *)((intptr_t)addr + size);
+	void *endaddr = offset_ptr(addr, size);
 
 	while (addr < endaddr) {
 		decipher_page(addr);
-		addr = (void *)((intptr_t)addr + PAGE_SIZE);
+		addr = offset_ptr(addr, PAGE_SIZE);
 	}
 }
 
 
 
 static void *allocate_decipher(const void *addr, size_t size) {
-	const void *addralign = (const void *)((intptr_t)addr & ~(PAGE_SIZE - 1));
+	const void *addralign = round_down_page_ptr(addr);
 	size_t startoffset = (intptr_t)addr - (intptr_t)addralign;
-	size_t sizealign = (size + startoffset + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+	size_t sizealign = round_up_page(size + startoffset);
 	void *block;
 
 	block = malloc(sizealign);
@@ -164,7 +194,7 @@ static void *allocate_decipher(const void *addr, size_t size) {
 
 	memcpy(block, addralign, sizealign);
 	decipher_pages(block, sizealign);
-	memmove(block, (void *)((intptr_t)block + startoffset), size);
+	memmove(block, offset_ptr(block, startoffset), size);
 
 	/* We might have allocated almost 2 pages too much. */
 	block = realloc(block, size);
@@ -291,8 +321,8 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
 	if (base != NULL && addr != reqaddr)
 		syserr("mmap returned an unexpected address");
 
-	dst = (void *)((intptr_t)addr + bias);
-	src = (void *)((intptr_t)ptr + phdr->p_offset);
+	dst = offset_ptr(addr, bias);
+	src = elf_offset_ptr(ptr, phdr->p_offset);
 	memcpy(dst, src, phdr->p_filesz);
 
 	segsz = phdr->p_memsz + bias;
@@ -332,7 +362,7 @@ struct process_mapping load_elf(const void *ptr, int preciphered, const char *fi
 	memset(&map, 0, sizeof(map));
 	map.prog.ehdr = *elf;
 
-	phdr_table = (void *)((intptr_t)ptr + elf->e_phoff);
+	phdr_table = elf_offset_ptr(ptr, elf->e_phoff);
 	if (preciphered) {
 		phdr_table_size = elf->e_phentsize * elf->e_phnum;
 		phdr_table = allocate_decipher(phdr_table, phdr_table_size);
@@ -361,15 +391,15 @@ struct process_mapping load_elf(const void *ptr, int preciphered, const char *fi
 
 		map.prog.segments[segno++] = seg;
 	}
-	map.prog.entrypoint = (void *)((intptr_t)map.prog.base + elf->e_entry);
-	map.prog.phdr_table = (void *)((intptr_t)map.prog.base + elf->e_phoff);
+	map.prog.entrypoint = elf_offset_ptr(map.prog.base, elf->e_entry);
+	map.prog.phdr_table = elf_offset_ptr(map.prog.base, elf->e_phoff);
 
 	/* Get the interpreter path and load it if needed. */
 	for (phdr = phdr_table; phdr < &phdr_table[elf->e_phnum]; phdr++) {
 		if (phdr->p_type != PT_INTERP)
 			continue;
 
-		interppath = (const void *)((intptr_t)ptr + phdr->p_offset);
+		interppath = elf_offset_ptr(ptr, phdr->p_offset);
 		if (preciphered)
 			interppath = allocate_decipher(interppath, phdr->p_filesz);
 	}
@@ -449,13 +479,13 @@ static struct segment_map *segment_lookup(const struct process_mapping *map, con
 
 	for (i = 0; i < map->prog.nsegments; i++) {
 		seg = &map->prog.segments[i];
-		if (addr >= seg->base && addr < (void *)((intptr_t)seg->base + seg->size))
+		if (addr >= seg->base && addr < offset_ptr(seg->base, seg->size))
 			return seg;
 	}
 
 	for (i = 0; i < map->interp.nsegments; i++) {
 		seg = &map->interp.segments[i];
-		if (addr >= seg->base && addr < (void *)((intptr_t)seg->base + seg->size))
+		if (addr >= seg->base && addr < offset_ptr(seg->base, seg->size))
 			return seg;
 	}
 
@@ -471,7 +501,7 @@ static void dump_map(const struct process_mapping *map) {
 	for (i = 0; i < map->prog.nsegments; i++) {
 		const struct segment_map *seg = &map->prog.segments[i];
 		const void *start = seg->base;
-		const void *end = (void *)((intptr_t)seg->base + seg->size);
+		const void *end = offset_ptr(seg->base, seg->size);
 
 		debugprintf(1, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
 	}
@@ -481,7 +511,7 @@ static void dump_map(const struct process_mapping *map) {
 	for (i = 0; i < map->interp.nsegments; i++) {
 		const struct segment_map *seg = &map->interp.segments[i];
 		const void *start = seg->base;
-		const void *end = (void *)((intptr_t)seg->base + seg->size);
+		const void *end = offset_ptr(seg->base, seg->size);
 
 		debugprintf(1, "\tSegment %lu start: 0x%08lx, end: 0x%08lx, prot: %d\n", i, (intptr_t)start, (intptr_t)end, seg->prot);
 	}
