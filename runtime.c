@@ -298,7 +298,7 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
 	int flags;
 	struct segment_map seg;
 	size_t segsz;
-	intptr_t reqaddrraw, reqaddralign;
+	void *vaddr;
 	int err;
 
 	assert(phdr->p_type == PT_LOAD);
@@ -310,10 +310,9 @@ static struct segment_map load_segment(const void *ptr, const Elf64_Phdr *phdr,
 	seg.prot |= (phdr->p_flags & PF_X) ? PROT_EXEC : 0;
 
 	flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE;
-	reqaddrraw = (intptr_t)base + phdr->p_vaddr;
-	reqaddralign = reqaddrraw & ~(PAGE_SIZE - 1);
-	bias = reqaddrraw - reqaddralign;
-	reqaddr = (void *)reqaddralign;
+	vaddr = offset_ptr(base, phdr->p_vaddr);
+	reqaddr = round_down_page_ptr(vaddr);
+	bias = page_offset_ptr(vaddr);
 
 	addr = mmap(reqaddr, phdr->p_memsz + bias, PROT_WRITE, flags, -1, 0);
 	if (addr == MAP_FAILED)
